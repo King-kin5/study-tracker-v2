@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ section.label }} — Study Tracker</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/base.css">
+</head>
+<body>
+{% set sections = all_sections %}
+{% include "partials/sidebar.html" %}
+<main class="main">
+
+  {% include "partials/topbar.html" %}
+
+  <!-- Section header -->
+  <div class="section-header-bar" style="--c:{{ section.color }}">
+    <div class="shb-left">
+      <span class="shb-icon">{{ section.icon }}</span>
+      <div>
+        <div class="shb-title">{{ section.label }}</div>
+        <div class="shb-sub">{{ sec_stats.done }}/{{ sec_stats.total }} items · {{ sec_stats.phases | length }} modules</div>
+      </div>
+    </div>
+    <div class="shb-right">
+      <div class="big-pct" style="color:{{ section.color }}">{{ sec_stats.pct }}%</div>
+      <div class="shb-bar"><div style="width:{{ sec_stats.pct }}%;background:{{ section.color }}"></div></div>
+    </div>
+    {% if section.id.startswith('custom_') %}
+    <button class="btn-danger-sm" onclick="confirmRemoveSection('{{ section.id }}', '{{ section.label }}')" title="Delete this section">🗑 Delete Section</button>
+    {% endif %}
+  </div>
+
+  <!-- Phase jump nav -->
+  <div class="phase-jump-nav">
+    {% for phase in section.phases %}
+    {% set ps = sec_stats.phases[loop.index0] %}
+    <a href="#{{ phase.id }}" class="pjn-item" style="--c:{{ phase.color }}">
+      {{ phase.icon }} {{ phase.phase }}
+      <span class="pjn-pct">{{ ps.pct }}%</span>
+    </a>
+    {% endfor %}
+    <button class="pjn-add" onclick="openAddPhase()" title="Add new phase">+ Phase</button>
+  </div>
+
+  <!-- Phases -->
+  {% for phase in section.phases %}
+  {% set ps = sec_stats.phases[loop.index0] %}
+  <section class="phase-block" id="{{ phase.id }}">
+
+    <div class="pb-header" style="--c:{{ phase.color }}">
+      <div class="pb-hl">
+        <div class="pb-icon-wrap" style="background:{{ phase.color }}18;border:1px solid {{ phase.color }}44">
+          <span>{{ phase.icon }}</span>
+        </div>
+        <div>
+          <div class="pb-tag">{{ phase.phase }}
+            <span class="pb-status {{ phase.status }}">{{ phase.status | title }}</span>
+          </div>
+          <h2 class="pb-title">{{ phase.title }}</h2>
+        </div>
+      </div>
+      <div class="pb-progress">
+        <div class="pb-pct" style="color:{{ phase.color }}">{{ ps.pct }}%</div>
+        <div class="pb-bar"><div style="width:{{ ps.pct }}%;background:{{ phase.color }}"></div></div>
+        <div class="pb-count">{{ ps.done }}/{{ ps.total }}</div>
+      </div>
+      {% if '_custom_' in phase.id %}
+      <button class="btn-danger-sm" onclick="confirmRemovePhase('{{ section.id }}', '{{ phase.id }}', '{{ phase.title }}')" title="Delete phase">🗑</button>
+      {% endif %}
+    </div>
+
+    <!-- Sub-section tabs -->
+    <div class="stabs" id="stabs-{{ phase.id }}">
+      {% for sec_key, items in phase.sections.items() %}
+      {% set sm = section_meta[sec_key] %}
+      {% set ss2 = ps.section_stats[sec_key] %}
+      <button class="stab {% if loop.first %}active{% endif %}"
+              onclick="switchTab('{{ phase.id }}','{{ sec_key }}')"
+              id="stab-{{ phase.id }}-{{ sec_key }}"
+              style="--c:{{ phase.color }}">
+        {{ sm[0] }} {{ sm[1] }}
+        <span class="stab-count">{{ ss2.done }}/{{ ss2.total }}</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Panels -->
+    {% for sec_key, items in phase.sections.items() %}
+    <div class="spanel {% if loop.first %}active{% endif %}"
+         id="spanel-{{ phase.id }}-{{ sec_key }}">
+      <div class="items-list" id="list-{{ phase.id }}-{{ sec_key }}">
+        {% for item in items %}
+        {% set ikey = phase.id ~ '.' ~ sec_key ~ '.' ~ loop.index0 %}
+        {% set done = checked.get(ikey) %}
+        <div class="item-row {% if done %}checked{% endif %}"
+             id="item-{{ ikey | replace('.', '-') }}"
+             hx-post="/toggle"
+             hx-vals='{"key":"{{ ikey }}"}'
+             hx-target="#item-{{ ikey | replace('.', '-') }}"
+             hx-swap="outerHTML">
+          <div class="checkbox" style="--pc:{{ phase.color }}">{% if done %}✓{% endif %}</div>
+          <span class="item-text">{{ item }}</span>
+          <button class="item-del" title="Remove item"
+                  hx-post="/remove-item"
+                  hx-vals='{"key":"{{ ikey }}"}'
+                  hx-target="#item-{{ ikey | replace('.', '-') }}"
+                  hx-swap="outerHTML"
+                  hx-confirm="Remove this item?"
+                  onclick="event.stopPropagation()">×</button>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Add item form -->
+      <form class="add-item-form"
+            hx-post="/add-item"
+            hx-target="#list-{{ phase.id }}-{{ sec_key }}"
+            hx-swap="beforeend"
+            onsubmit="clearInput(this)">
+        <input type="hidden" name="phase_id" value="{{ phase.id }}">
+        <input type="hidden" name="sec_key"  value="{{ sec_key }}">
+        <input class="add-item-input" type="text" name="text"
+               placeholder="Add {{ section_meta[sec_key][1] | lower }} item…"
+               style="--ac:{{ phase.color }}"
+               autocomplete="off">
+        <button class="add-item-btn" type="submit" style="background:{{ phase.color }}">＋</button>
+      </form>
+    </div>
+    {% endfor %}
+
+  </section>
+  {% endfor %}
+
+  <!-- Add Phase floating trigger -->
+  <div style="padding:20px 28px 40px">
+    <button class="btn-add-phase" onclick="openAddPhase()" style="--c:{{ section.color }}">
+      ＋ Add New Phase to {{ section.label }}
+    </button>
+  </div>
+
+</main>
+
+<!-- Add Phase Modal -->
+<div class="modal-backdrop" id="modal-add-phase" style="display:none">
+  <div class="modal" style="--c:{{ section.color }}">
+    <div class="modal-header">
+      <span class="modal-title">＋ New Phase</span>
+      <button class="modal-close" onclick="closeModal('modal-add-phase')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label">Phase Title</label>
+      <input class="modal-input" id="new-phase-title" type="text" placeholder="e.g. Advanced Techniques…" style="--c:{{ section.color }}">
+
+      <label class="modal-label">Icon (emoji)</label>
+      <input class="modal-input" id="new-phase-icon" type="text" placeholder="🚀" maxlength="4" style="--c:{{ section.color }}">
+
+      <label class="modal-label">Color</label>
+      <div class="palette-row" id="phase-palette">
+        {% for col in palette %}
+        <div class="palette-swatch {% if loop.first %}selected{% endif %}"
+             style="background:{{ col }}"
+             data-color="{{ col }}"
+             onclick="selectColor(this,'phase-palette','new-phase-color')"></div>
+        {% endfor %}
+      </div>
+      <input type="hidden" id="new-phase-color" value="{{ palette[0] }}">
+
+      <div id="add-phase-error" class="modal-error" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-add-phase')">Cancel</button>
+      <button class="btn-modal-confirm" style="background:{{ section.color }}" onclick="submitAddPhase('{{ section.id }}')">Add Phase</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+function openAddPhase() {
+  document.getElementById('modal-add-phase').style.display = 'flex';
+  document.getElementById('new-phase-title').focus();
+}
+
+function confirmRemovePhase(sectionId, phaseId, title) {
+  if (!confirm(`Delete phase "${title}" and all its items? This cannot be undone.`)) return;
+  fetch('/remove-phase', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `section_id=${encodeURIComponent(sectionId)}&phase_id=${encodeURIComponent(phaseId)}`
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else alert(d.error);
+  });
+}
+
+function confirmRemoveSection(sectionId, label) {
+  if (!confirm(`Delete section "${label}" and ALL its data? This cannot be undone.`)) return;
+  fetch('/remove-section', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `section_id=${encodeURIComponent(sectionId)}`
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.href = '/';
+    else alert(d.error);
+  });
+}
+
+function submitAddPhase(sectionId) {
+  const title = document.getElementById('new-phase-title').value.trim();
+  const icon  = document.getElementById('new-phase-icon').value.trim() || '📌';
+  const color = document.getElementById('new-phase-color').value;
+  const errEl = document.getElementById('add-phase-error');
+  if (!title) { errEl.textContent='Phase title is required.'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+  fetch('/add-phase', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `section_id=${encodeURIComponent(sectionId)}&title=${encodeURIComponent(title)}&icon=${encodeURIComponent(icon)}&color=${encodeURIComponent(color)}`
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else { errEl.textContent = d.error; errEl.style.display='block'; }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<aside class="sidebar" id="sidebar">
+  <a href="/" class="sb-logo">
+    <span class="sb-logo-icon">⚡</span>
+    <span class="sb-logo-text">STUDY<br>TRACKER</span>
+  </a>
+
+  <nav class="sb-nav">
+    <a href="/" class="sb-link {% if request.url.path == '/' %}active{% endif %}">
+      <span>🗺</span><span class="sb-link-label">Home</span>
+    </a>
+    <a href="/dashboard" class="sb-link {% if 'dashboard' in request.url.path %}active{% endif %}">
+      <span>📊</span><span class="sb-link-label">Dashboard</span>
+    </a>
+  </nav>
+
+  <div class="sb-divider"></div>
+
+  <div class="sb-sections-nav">
+    {% for s in sections %}
+    <a href="/section/{{ s.id }}" class="sb-sec-link
+       {% if 'section/' ~ s.id in request.url.path %}active{% endif %}"
+       style="--c:{{ s.color }}" title="{{ s.label }}">
+      <span class="sb-sec-icon">{{ s.icon }}</span>
+      <span class="sb-sec-label">{{ s.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</aside>

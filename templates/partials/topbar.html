@@ -1,0 +1,32 @@
+<div class="topbar">
+  <div class="tb-title">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+    <h1 class="tb-h1">
+      {% if request.url.path == '/' %}
+        Master Roadmap
+      {% elif 'dashboard' in request.url.path %}
+        Dashboard
+      {% else %}
+        {{ section.label if section is defined else 'Study Tracker' }}
+      {% endif %}
+    </h1>
+  </div>
+
+  <div id="stats-bar">
+    <div class="sb-pills">
+      <div class="sb-pill"><span style="color:#fbbf24;font-weight:700">🔥{{ streak }}</span><span class="sb-label">streak</span></div>
+      <div class="sb-pill"><span style="color:#60a5fa;font-weight:700">{{ study_days }}</span><span class="sb-label">days</span></div>
+      <div class="sb-pill"><span style="color:#4ade80;font-weight:700">{{ stats.done }}/{{ stats.total }}</span><span class="sb-label">done</span></div>
+      <div class="sb-pill"><span style="color:#f472b6;font-weight:700">{{ stats.overall_pct }}%</span><span class="sb-label">total</span></div>
+    </div>
+    <div class="sb-sections">
+      {% for ss in stats.sections %}
+      <div class="sb-sec" style="--c:{{ ss.color }}">
+        <span>{{ ss.icon }}</span>
+        <div class="sb-bar-wrap"><div class="sb-bar" style="width:{{ ss.pct }}%;background:{{ ss.color }}"></div></div>
+        <span class="sb-pct">{{ ss.pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

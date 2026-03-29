@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dashboard — Study Tracker</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/base.css">
+</head>
+<body>
+{% set sections = all_sections %}
+{% include "partials/sidebar.html" %}
+<main class="main">
+  {% include "partials/topbar.html" %}
+
+  <div class="dash-hero-grid">
+    <div class="dh-card" style="--c:#fbbf24">
+      <div class="dh-num">🔥{{ streak }}</div>
+      <div class="dh-label">Day Streak</div>
+    </div>
+    <div class="dh-card" style="--c:#60a5fa">
+      <div class="dh-num">{{ study_days }}</div>
+      <div class="dh-label">Study Days</div>
+    </div>
+    <div class="dh-card" style="--c:#4ade80">
+      <div class="dh-num">{{ stats.done }}</div>
+      <div class="dh-label">Items Done</div>
+    </div>
+    <div class="dh-card" style="--c:#f472b6">
+      <div class="dh-num">{{ stats.overall_pct }}%</div>
+      <div class="dh-label">Complete</div>
+    </div>
+  </div>
+
+  <!-- Section breakdown -->
+  <h2 class="section-heading">Section Breakdown</h2>
+  {% for ss in stats.sections %}
+  <div class="dash-section-card" style="--c:{{ ss.color }}">
+    <div class="dsc-header">
+      <span class="dsc-icon">{{ ss.icon }}</span>
+      <span class="dsc-title">{{ ss.label }}</span>
+      <span class="dsc-pct" style="color:{{ ss.color }}">{{ ss.pct }}%</span>
+      <div class="dsc-bar"><div style="width:{{ ss.pct }}%;background:{{ ss.color }}"></div></div>
+      <span class="dsc-count">{{ ss.done }}/{{ ss.total }}</span>
+    </div>
+
+    <div class="dsc-phases">
+      {% for ps in ss.phases %}
+      <div class="dsc-phase">
+        <span class="dsc-pi">{{ ps.icon }}</span>
+        <span class="dsc-pname">{{ ps.phase }}: {{ ps.title }}</span>
+        <div class="dsc-pbar">
+          <div style="width:{{ ps.pct }}%;background:{{ ps.color }}"></div>
+        </div>
+        <span class="dsc-ppct" style="color:{{ ps.color }}">{{ ps.pct }}%</span>
+
+        <div class="dsc-segs">
+          {% set sm_keys = ["topics","papers_read","papers_implement","experiments","projects"] %}
+          {% set sm_icons = ["📚","📄","🔬","⚗️","🛠️"] %}
+          {% for sk in sm_keys %}
+          {% if sk in ps.section_stats %}
+          {% set seg = ps.section_stats[sk] %}
+          {% set seg_pct = (seg.done / seg.total * 100) | round | int if seg.total else 0 %}
+          <div class="dsc-seg" title="{{ sm_icons[loop.index0] }} {{ sk }}: {{ seg.done }}/{{ seg.total }}">
+            <div style="width:{{ seg_pct }}%;background:{{ ps.color }};opacity:.7"></div>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Overall mega bar -->
+  <h2 class="section-heading">Overall Roadmap</h2>
+  <div class="mega-bar-card">
+    <div class="mega-bar">
+      {% for ss in stats.sections %}
+      {% set seg_w = (ss.total / stats.total * 100) | round(1) %}
+      <div class="mega-seg" style="width:{{ seg_w }}%;background:{{ ss.color }}11;border-right:1px solid #1e293b"
+           title="{{ ss.label }}: {{ ss.pct }}%">
+        <div style="width:{{ ss.pct }}%;height:100%;background:{{ ss.color }};transition:width .5s"></div>
+        <span class="mega-seg-label">{{ ss.icon }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mega-legend">
+      {% for ss in stats.sections %}
+      <div class="ml-item">
+        <span class="ml-dot" style="background:{{ ss.color }}"></span>{{ ss.label }}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mega-total">{{ stats.overall_pct }}% of entire roadmap complete</div>
+  </div>
+
+</main>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

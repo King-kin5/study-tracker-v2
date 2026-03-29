@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Lekan's Master Study Tracker</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/base.css">
+</head>
+<body>
+{% include "partials/sidebar.html" %}
+<main class="main">
+
+  {% include "partials/topbar.html" %}
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-text">
+      <h1>Lekan's <span class="glow">Master</span> Study Tracker</h1>
+      <p>AI/ML · Backend Engineering · Mathematics · Physics</p>
+    </div>
+    <div class="hero-stat">
+      <div class="big-pct" style="color:#60a5fa">{{ stats.overall_pct }}%</div>
+      <div class="big-label">overall complete</div>
+      <div class="big-sub">{{ stats.done }} of {{ stats.total }} items</div>
+    </div>
+  </div>
+
+  <!-- Section cards grid -->
+  <div class="section-grid">
+    {% for section in sections %}
+    {% set ss = stats.sections[loop.index0] %}
+    <a href="/section/{{ section.id }}" class="section-card" style="--c:{{ section.color }}">
+      <div class="sc-icon">{{ section.icon }}</div>
+      <div class="sc-body">
+        <div class="sc-title">{{ section.label }}</div>
+        <div class="sc-meta">{{ ss.done }}/{{ ss.total }} items · {{ ss.pct }}%</div>
+        <div class="sc-phases">{{ section.phases | length }} modules</div>
+      </div>
+      <div class="sc-ring">
+        <svg viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e293b" stroke-width="3.5"/>
+          <circle cx="18" cy="18" r="15.9" fill="none"
+                  stroke="{{ section.color }}" stroke-width="3.5"
+                  stroke-dasharray="{{ ss.pct }} 100"
+                  stroke-linecap="round"
+                  transform="rotate(-90 18 18)"/>
+        </svg>
+        <span class="ring-num">{{ ss.pct }}%</span>
+      </div>
+    </a>
+    {% endfor %}
+
+    <!-- Add Section card -->
+    <button class="section-card section-card-add" onclick="openAddSection()">
+      <div class="sc-icon">＋</div>
+      <div class="sc-body">
+        <div class="sc-title">New Section</div>
+        <div class="sc-meta">Add a custom section</div>
+      </div>
+    </button>
+  </div>
+
+  <!-- All phases quick overview -->
+  <div class="phases-overview">
+    <h2 class="section-heading">All Phases at a Glance</h2>
+    {% for section in sections %}
+    {% set ss = stats.sections[loop.index0] %}
+    <div class="ov-section" style="--c:{{ section.color }}">
+      <div class="ov-header">
+        <span class="ov-icon">{{ section.icon }}</span>
+        <span class="ov-title">{{ section.label }}</span>
+        <span class="ov-pct" style="color:{{ section.color }}">{{ ss.pct }}%</span>
+      </div>
+      <div class="ov-phases">
+        {% for phase in section.phases %}
+        {% set ps = ss.phases[loop.index0] %}
+        <a href="/section/{{ section.id }}#{{ phase.id }}" class="ov-phase">
+          <span>{{ phase.icon }}</span>
+          <span class="ov-phase-name">{{ phase.phase }}: {{ phase.title }}</span>
+          <div class="ov-pbar">
+            <div style="width:{{ ps.pct }}%;background:{{ phase.color }};height:100%;border-radius:99px;transition:width .4s"></div>
+          </div>
+          <span class="ov-phase-pct" style="color:{{ phase.color }}">{{ ps.pct }}%</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+</main>
+
+<!-- Add Section Modal -->
+<div class="modal-backdrop" id="modal-add-section" style="display:none">
+  <div class="modal" style="--c:#60a5fa">
+    <div class="modal-header">
+      <span class="modal-title">＋ New Section</span>
+      <button class="modal-close" onclick="closeModal('modal-add-section')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label">Section Name</label>
+      <input class="modal-input" id="new-sec-label" type="text" placeholder="e.g. Cloud Infrastructure…" style="--c:#60a5fa">
+
+      <label class="modal-label">Icon (emoji)</label>
+      <input class="modal-input" id="new-sec-icon" type="text" placeholder="☁️" maxlength="4" style="--c:#60a5fa">
+
+      <label class="modal-label">Color</label>
+      <div class="palette-row" id="sec-palette">
+        <div class="palette-swatch selected" style="background:#60a5fa" data-color="#60a5fa" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#4ade80" data-color="#4ade80" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#f472b6" data-color="#f472b6" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#fb923c" data-color="#fb923c" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#a78bfa" data-color="#a78bfa" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#34d399" data-color="#34d399" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#fbbf24" data-color="#fbbf24" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#f87171" data-color="#f87171" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#38bdf8" data-color="#38bdf8" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+        <div class="palette-swatch" style="background:#c084fc" data-color="#c084fc" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
+      </div>
+      <input type="hidden" id="new-sec-color" value="#60a5fa">
+
+      <div id="add-sec-error" class="modal-error" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-add-section')">Cancel</button>
+      <button class="btn-modal-confirm" style="background:#60a5fa" onclick="submitAddSection()">Create Section</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+function openAddSection() {
+  document.getElementById('modal-add-section').style.display = 'flex';
+  document.getElementById('new-sec-label').focus();
+}
+
+function submitAddSection() {
+  const label = document.getElementById('new-sec-label').value.trim();
+  const icon  = document.getElementById('new-sec-icon').value.trim() || '📁';
+  const color = document.getElementById('new-sec-color').value;
+  const errEl = document.getElementById('add-sec-error');
+  if (!label) { errEl.textContent='Section name is required.'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+  fetch('/add-section', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `label=${encodeURIComponent(label)}&icon=${encodeURIComponent(icon)}&color=${encodeURIComponent(color)}`
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.href = d.redirect;
+    else { errEl.textContent = d.error; errEl.style.display='block'; }
+  });
+}
+</script>
+</body>
+</html>
