@@ -52,14 +52,6 @@
     </a>
     {% endfor %}
 
-    <!-- Add Section card -->
-    <button class="section-card section-card-add" onclick="openAddSection()">
-      <div class="sc-icon">＋</div>
-      <div class="sc-body">
-        <div class="sc-title">New Section</div>
-        <div class="sc-meta">Add a custom section</div>
-      </div>
-    </button>
   </div>
 
   <!-- All phases quick overview -->
@@ -91,68 +83,6 @@
   </div>
 
 </main>
-
-<!-- Add Section Modal -->
-<div class="modal-backdrop" id="modal-add-section" style="display:none">
-  <div class="modal" style="--c:#60a5fa">
-    <div class="modal-header">
-      <span class="modal-title">＋ New Section</span>
-      <button class="modal-close" onclick="closeModal('modal-add-section')">✕</button>
-    </div>
-    <div class="modal-body">
-      <label class="modal-label">Section Name</label>
-      <input class="modal-input" id="new-sec-label" type="text" placeholder="e.g. Cloud Infrastructure…" style="--c:#60a5fa">
-
-      <label class="modal-label">Icon (emoji)</label>
-      <input class="modal-input" id="new-sec-icon" type="text" placeholder="☁️" maxlength="4" style="--c:#60a5fa">
-
-      <label class="modal-label">Color</label>
-      <div class="palette-row" id="sec-palette">
-        <div class="palette-swatch selected" style="background:#60a5fa" data-color="#60a5fa" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#4ade80" data-color="#4ade80" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#f472b6" data-color="#f472b6" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#fb923c" data-color="#fb923c" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#a78bfa" data-color="#a78bfa" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#34d399" data-color="#34d399" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#fbbf24" data-color="#fbbf24" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#f87171" data-color="#f87171" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#38bdf8" data-color="#38bdf8" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-        <div class="palette-swatch" style="background:#c084fc" data-color="#c084fc" onclick="selectColor(this,'sec-palette','new-sec-color')"></div>
-      </div>
-      <input type="hidden" id="new-sec-color" value="#60a5fa">
-
-      <div id="add-sec-error" class="modal-error" style="display:none"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-modal-cancel" onclick="closeModal('modal-add-section')">Cancel</button>
-      <button class="btn-modal-confirm" style="background:#60a5fa" onclick="submitAddSection()">Create Section</button>
-    </div>
-  </div>
-</div>
-
 <script src="/static/js/app.js"></script>
-<script>
-function openAddSection() {
-  document.getElementById('modal-add-section').style.display = 'flex';
-  document.getElementById('new-sec-label').focus();
-}
-
-function submitAddSection() {
-  const label = document.getElementById('new-sec-label').value.trim();
-  const icon  = document.getElementById('new-sec-icon').value.trim() || '📁';
-  const color = document.getElementById('new-sec-color').value;
-  const errEl = document.getElementById('add-sec-error');
-  if (!label) { errEl.textContent='Section name is required.'; errEl.style.display='block'; return; }
-  errEl.style.display = 'none';
-  fetch('/add-section', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: `label=${encodeURIComponent(label)}&icon=${encodeURIComponent(icon)}&color=${encodeURIComponent(color)}`
-  }).then(r => r.json()).then(d => {
-    if (d.ok) location.href = d.redirect;
-    else { errEl.textContent = d.error; errEl.style.display='block'; }
-  });
-}
-</script>
 </body>
 </html>
