@@ -121,6 +121,35 @@ def init_db():
 # Run once when the server starts
 init_db()
 
+# ── auto-fix duplicates on startup (idempotent) ────────────────────────────────
+# The old code had a bug where import_static_data() was called on every restart
+# because get_all_sections() always returned static data (duplicate function).
+# This cleans up any bloated items table automatically.
+try:
+    with get_db() as _conn:
+        with _conn.cursor() as _cur:
+            _cur.execute("SELECT COUNT(*) AS cnt FROM items")
+            _item_count = _cur.fetchone()["cnt"]
+    _expected_max = 3000  # real data is ~1908; if way over, purge duplicates
+    if _item_count > _expected_max:
+        print(f"[startup] Found {_item_count} items (expected ~1908) — purging duplicates...")
+        # Can't call purge_duplicate_items() yet (defined later), inline it:
+        with get_db() as _conn2:
+            with _conn2.cursor() as _cur2:
+                _cur2.execute("""
+                    DELETE FROM items
+                    WHERE id NOT IN (
+                        SELECT MIN(id)
+                        FROM items
+                        GROUP BY phase_section_id, content
+                    )
+                """)
+                _removed = _cur2.rowcount
+                _conn2.commit()
+        print(f"[startup] Purged {_removed} duplicate items.")
+except Exception as _e:
+    print(f"[startup] Duplicate check skipped: {_e}")
+
 def calculate_total_items(sections=None):
     """Calculate the total number of items across all sections."""
     if sections is None:
@@ -198,55 +227,58 @@ def get_all_sections_db():
             return result
 
 def import_static_data():
-    """Import the static data from roadmap_data.py into the database."""
-    sections = get_all_sections()  # This loads from the static file
-    
+    """Import the static roadmap data into the database (runs only when DB is empty)."""
+    # Use ALL_SECTIONS directly — never call get_all_sections() here (would recurse)
+    sections = [json.loads(json.dumps(s)) for s in ALL_SECTIONS]
+
     with get_db() as conn:
         with conn.cursor() as cur:
             for i, section in enumerate(sections):
-                # Insert section
                 cur.execute("""
                     INSERT INTO sections (id, label, icon, color, sort_order)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                 """, (section["id"], section["label"], section["icon"], section["color"], i))
-                
+
                 for j, phase in enumerate(section["phases"]):
                     phase_id = phase["id"]
-                    
-                    # Insert phase
+
                     cur.execute("""
                         INSERT INTO phases (id, section_id, phase, title, icon, color, status, sort_order)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (id) DO NOTHING
-                    """, (phase_id, section["id"], phase["phase"], phase["title"], 
+                    """, (phase_id, section["id"], phase["phase"], phase["title"],
                          phase["icon"], phase["color"], phase.get("status", "upcoming"), j))
-                    
-                    # Insert phase sections and items
+
                     for section_key, items in phase["sections"].items():
-                        # Insert phase section
                         cur.execute("""
                             INSERT INTO phase_sections (phase_id, section_key)
                             VALUES (%s, %s)
                             ON CONFLICT (phase_id, section_key) DO NOTHING
                         """, (phase_id, section_key))
-                        
-                        # Get the phase_section_id
+
                         cur.execute("""
-                            SELECT id FROM phase_sections 
+                            SELECT id FROM phase_sections
                             WHERE phase_id = %s AND section_key = %s
                         """, (phase_id, section_key))
                         ps_row = cur.fetchone()
-                        if ps_row:
-                            ps_id = ps_row["id"]
-                            
-                            # Insert items
-                            for k, item in enumerate(items):
-                                cur.execute("""
-                                    INSERT INTO items (phase_section_id, content, sort_order)
-                                    VALUES (%s, %s, %s)
-                                """, (ps_id, item, k))
-            
+                        if not ps_row:
+                            continue
+                        ps_id = ps_row["id"]
+
+                        # Only insert items if this phase_section is still empty
+                        cur.execute("SELECT COUNT(*) AS cnt FROM items WHERE phase_section_id = %s", (ps_id,))
+                        if cur.fetchone()["cnt"] > 0:
+                            continue
+
+                        for k, item in enumerate(items):
+                            # Static data items are plain strings
+                            content = item if isinstance(item, str) else item["content"]
+                            cur.execute("""
+                                INSERT INTO items (phase_section_id, content, sort_order)
+                                VALUES (%s, %s, %s)
+                            """, (ps_id, content, k))
+
             conn.commit()
 
 def get_all_sections():
@@ -519,6 +551,36 @@ async def toggle(request: Request, key: str = Form(...)):
     stats_html    = _stats_oob(stats, streak, study_days)
     return HTMLResponse(checkbox_html + stats_html)
 
+# ── DB maintenance ────────────────────────────────────────────────────────────
+
+def purge_duplicate_items():
+    """Remove duplicate items caused by repeated import_static_data() calls.
+    Keeps only the first (lowest id) item per (phase_section_id, content) pair."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM items
+                WHERE id NOT IN (
+                    SELECT MIN(id)
+                    FROM items
+                    GROUP BY phase_section_id, content
+                )
+            """)
+            deleted = cur.rowcount
+            conn.commit()
+            return deleted
+
+@app.post("/api/admin/fix-duplicates", response_class=JSONResponse)
+async def fix_duplicates():
+    """One-time endpoint to remove duplicate items from repeated imports."""
+    deleted = purge_duplicate_items()
+    # Reset the stored total_items/overall_pct in progress
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE progress SET total_items = 0, overall_pct = 0 WHERE id = 'main'")
+            conn.commit()
+    return {"deleted_duplicates": deleted, "message": "Done — reload the page"}
+
 # ── Management API ─────────────────────────────────────────────────────────────
 
 # Sections
@@ -529,15 +591,15 @@ async def create_section(request: Request):
     
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM sections")
-            sort_order = cur.fetchone()[0]
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 AS so FROM sections")
+            sort_order = cur.fetchone()["so"]
             
             cur.execute("""
                 INSERT INTO sections (id, label, icon, color, sort_order)
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
             """, (section_id, data["label"], data["icon"], data["color"], sort_order))
-            new_id = cur.fetchone()[0]
+            new_id = cur.fetchone()["id"]
             conn.commit()
             return {"id": new_id}
 
@@ -570,8 +632,8 @@ async def create_phase(section_id: str, request: Request):
     
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM phases WHERE section_id = %s", (section_id,))
-            sort_order = cur.fetchone()[0]
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 AS so FROM phases WHERE section_id = %s", (section_id,))
+            sort_order = cur.fetchone()["so"]
             
             cur.execute("""
                 INSERT INTO phases (id, section_id, phase, title, icon, color, status, sort_order)
@@ -579,7 +641,7 @@ async def create_phase(section_id: str, request: Request):
                 RETURNING id
             """, (phase_id, section_id, data["phase"], data["title"], data["icon"], 
                  data["color"], data.get("status", "upcoming"), sort_order))
-            new_id = cur.fetchone()[0]
+            new_id = cur.fetchone()["id"]
 
             # Auto-create all default phase_section rows so items can be added immediately
             for sk in ["topics", "papers_read", "papers_implement", "experiments", "projects"]:
@@ -637,15 +699,15 @@ async def create_item(phase_id: str, section_key: str, request: Request):
                 return JSONResponse({"error": "phase_section not found"}, status_code=404)
             ps_id = row["id"]
             
-            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM items WHERE phase_section_id = %s", (ps_id,))
-            sort_order = cur.fetchone()[0]
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 AS so FROM items WHERE phase_section_id = %s", (ps_id,))
+            sort_order = cur.fetchone()["so"]
             
             cur.execute("""
                 INSERT INTO items (phase_section_id, content, sort_order)
                 VALUES (%s, %s, %s)
                 RETURNING id
             """, (ps_id, data["content"], sort_order))
-            new_id = cur.fetchone()[0]
+            new_id = cur.fetchone()["id"]
             conn.commit()
             return {"id": new_id}
 
