@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Manage Roadmap — Study Tracker</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <style>
+    .manage-container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    .section-card { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+    .section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+    .section-icon { font-size: 2rem; }
+    .section-title { font-size: 1.5rem; font-weight: 600; flex: 1; }
+    .phase-card { background: #0f172a; border-radius: 6px; padding: 1rem; margin: 0.5rem 0; }
+    .phase-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .item-list { margin-left: 1rem; }
+    .item { background: #334155; padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; }
+    .add-form { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .add-input { flex: 1; padding: 0.5rem; background: #334155; border: 1px solid #475569; border-radius: 4px; color: white; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-success { background: #10b981; color: white; }
+    .edit-btn { background: #f59e0b; color: white; margin-left: 0.5rem; }
+    .delete-btn { background: #ef4444; color: white; margin-left: 0.5rem; }
+  </style>
+</head>
+<body>
+{% include "partials/sidebar.html" %}
+<main class="main">
+  {% include "partials/topbar.html" %}
+
+  <div class="manage-container">
+    <h1 class="section-heading">Manage Roadmap</h1>
+
+    <!-- Add New Section -->
+    <div class="section-card">
+      <h2>Add New Section</h2>
+      <form hx-post="/api/sections" hx-target="#sections-list" hx-swap="beforeend" class="add-form">
+        <input type="text" name="label" placeholder="Section name" required class="add-input">
+        <input type="text" name="icon" placeholder="Icon (e.g. 🤖)" required class="add-input" style="width: 100px;">
+        <input type="color" name="color" value="#60a5fa" required class="add-input" style="width: 60px;">
+        <button type="submit" class="btn btn-primary">Add Section</button>
+      </form>
+    </div>
+
+    <!-- Sections List -->
+    <div id="sections-list">
+      {% for section in sections %}
+      <div class="section-card" id="section-{{ section.id }}">
+        <div class="section-header">
+          <span class="section-icon">{{ section.icon }}</span>
+          <span class="section-title">{{ section.label }}</span>
+          <button class="btn edit-btn" onclick="editSection('{{ section.id }}', '{{ section.label }}', '{{ section.icon }}', '{{ section.color }}')">Edit</button>
+          <button class="btn delete-btn" hx-delete="/api/sections/{{ section.id }}" hx-confirm="Delete this section and all its content?">Delete</button>
+        </div>
+
+        <!-- Phases -->
+        <div class="phases-list" id="phases-{{ section.id }}">
+          {% for phase in section.phases %}
+          <div class="phase-card" id="phase-{{ phase.id }}">
+            <div class="phase-header">
+              <span>{{ phase.icon }}</span>
+              <span><strong>{{ phase.phase }}:</strong> {{ phase.title }}</span>
+              <button class="btn edit-btn" onclick="editPhase('{{ phase.id }}', '{{ phase.phase }}', '{{ phase.title }}', '{{ phase.icon }}', '{{ phase.color }}', '{{ phase.status }}')">Edit</button>
+              <button class="btn delete-btn" hx-delete="/api/phases/{{ phase.id }}" hx-confirm="Delete this phase?">Delete</button>
+            </div>
+
+            <!-- Items by section type -->
+            {% for section_key, items in phase.sections.items() %}
+            <div class="item-section">
+              <h4>{{ section_key|replace('_', ' ')|title }}</h4>
+              <div class="item-list" id="items-{{ phase.id }}-{{ section_key }}">
+                {% for item in items %}
+                <div class="item" id="item-{{ loop.index }}">
+                  {{ item.content }}
+                  <button class="btn edit-btn" onclick="editItem({{ item.id }}, '{{ item.content|replace("'", "\\'") }}', '{{ phase.id }}', '{{ section_key }}')">Edit</button>
+                  <button class="btn delete-btn" hx-delete="/api/items/{{ item.id }}" hx-target="closest .item" hx-swap="outerHTML">Delete</button>
+                </div>
+                {% endfor %}
+              </div>
+
+              <!-- Add Item Form -->
+              <form hx-post="/api/phases/{{ phase.id }}/sections/{{ section_key }}/items" hx-target="#items-{{ phase.id }}-{{ section_key }}" hx-swap="beforeend" class="add-form">
+                <input type="text" name="content" placeholder="Add new {{ section_key|replace('_', ' ') }}" required class="add-input">
+                <button type="submit" class="btn btn-success">Add</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Add Phase Form -->
+        <div class="add-form" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155;">
+          <h3>Add New Phase</h3>
+          <form hx-post="/api/sections/{{ section.id }}/phases" hx-target="#phases-{{ section.id }}" hx-swap="beforeend">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <input type="text" name="phase" placeholder="Phase (e.g. Phase 1)" required class="add-input">
+              <input type="text" name="title" placeholder="Title" required class="add-input">
+              <input type="text" name="icon" placeholder="Icon" required class="add-input" style="width: 80px;">
+              <input type="color" name="color" value="#60a5fa" required class="add-input" style="width: 60px;">
+              <select name="status" class="add-input" style="width: 120px;">
+                <option value="upcoming">Upcoming</option>
+                <option value="current">Current</option>
+                <option value="completed">Completed</option>
+              </select>
+              <button type="submit" class="btn btn-primary">Add Phase</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Edit Modals/Dialogs -->
+  <div id="edit-section-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1e293b; padding: 2rem; border-radius: 8px; min-width: 400px;">
+      <h3>Edit Section</h3>
+      <form id="edit-section-form" class="add-form" style="flex-direction: column;">
+        <input type="text" id="edit-section-label" name="label" required class="add-input">
+        <input type="text" id="edit-section-icon" name="icon" required class="add-input">
+        <input type="color" id="edit-section-color" name="color" required class="add-input">
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <button type="button" class="btn btn-primary" onclick="saveSectionEdit()">Save</button>
+          <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentEditSectionId = null;
+    let currentEditPhaseId = null;
+    let currentEditItemId = null;
+
+    function editSection(id, label, icon, color) {
+      currentEditSectionId = id;
+      document.getElementById('edit-section-label').value = label;
+      document.getElementById('edit-section-icon').value = icon;
+      document.getElementById('edit-section-color').value = color;
+      document.getElementById('edit-section-modal').style.display = 'block';
+    }
+
+    function saveSectionEdit() {
+      const form = document.getElementById('edit-section-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+
+      fetch(`/api/sections/${currentEditSectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(() => {
+        closeModal();
+        location.reload();
+      });
+    }
+
+    function editPhase(id, phase, title, icon, color, status) {
+      // Similar implementation for phase editing
+      alert('Phase editing not implemented yet');
+    }
+
+    function editItem(id, content, phaseId, sectionKey) {
+      // Similar implementation for item editing
+      alert('Item editing not implemented yet');
+    }
+
+    function closeModal() {
+      document.getElementById('edit-section-modal').style.display = 'none';
+      currentEditSectionId = null;
+    }
+  </script>
+</main>
+</body>
+</html>

@@ -39,16 +39,67 @@ def init_db():
     """Create the progress table if it doesn't exist yet."""
     with get_db() as conn:
         with conn.cursor() as cur:
+            # Progress table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS progress (
                     id           TEXT PRIMARY KEY DEFAULT 'main',
                     checked      JSONB NOT NULL DEFAULT '{}',
                     streak_dates JSONB NOT NULL DEFAULT '[]',
-                    last_check   TEXT,
-                    total_items  INTEGER NOT NULL DEFAULT 0,
-                    overall_pct  FLOAT NOT NULL DEFAULT 0.0
+                    last_check   TEXT
                 )
             """)
+            # Add new columns if they don't exist (migration)
+            try:
+                cur.execute("ALTER TABLE progress ADD COLUMN total_items INTEGER NOT NULL DEFAULT 0")
+            except psycopg2.Error:
+                pass  # Column already exists
+            try:
+                cur.execute("ALTER TABLE progress ADD COLUMN overall_pct FLOAT NOT NULL DEFAULT 0.0")
+            except psycopg2.Error:
+                pass  # Column already exists
+            
+            # Roadmap tables
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sections (
+                    id          TEXT PRIMARY KEY,
+                    label       TEXT NOT NULL,
+                    icon        TEXT NOT NULL,
+                    color       TEXT NOT NULL,
+                    sort_order  INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS phases (
+                    id          TEXT PRIMARY KEY,
+                    section_id  TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+                    phase       TEXT NOT NULL,
+                    title       TEXT NOT NULL,
+                    icon        TEXT NOT NULL,
+                    color       TEXT NOT NULL,
+                    status      TEXT NOT NULL DEFAULT 'upcoming',
+                    sort_order  INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS phase_sections (
+                    id          SERIAL PRIMARY KEY,
+                    phase_id    TEXT NOT NULL REFERENCES phases(id) ON DELETE CASCADE,
+                    section_key TEXT NOT NULL,
+                    UNIQUE(phase_id, section_key)
+                )
+            """)
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS items (
+                    id          SERIAL PRIMARY KEY,
+                    phase_section_id INTEGER NOT NULL REFERENCES phase_sections(id) ON DELETE CASCADE,
+                    content     TEXT NOT NULL,
+                    sort_order  INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            
             # Ensure the single row exists
             cur.execute("""
                 INSERT INTO progress (id) VALUES ('main')
@@ -70,11 +121,155 @@ def calculate_total_items(sections=None):
                 total += len(items)
     return total
 
+def get_all_sections_db():
+    """Load all sections from database."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Get sections
+            cur.execute("SELECT * FROM sections ORDER BY sort_order")
+            sections = cur.fetchall()
+            
+            result = []
+            for section in sections:
+                section_id = section["id"]
+                
+                # Get phases for this section
+                cur.execute("""
+                    SELECT * FROM phases 
+                    WHERE section_id = %s 
+                    ORDER BY sort_order
+                """, (section_id,))
+                phases = cur.fetchall()
+                
+                phase_list = []
+                for phase in phases:
+                    phase_id = phase["id"]
+                    
+                    # Get phase sections
+                    cur.execute("""
+                        SELECT * FROM phase_sections 
+                        WHERE phase_id = %s
+                    """, (phase_id,))
+                    phase_sections = cur.fetchall()
+                    
+                    sections_dict = {}
+                    for ps in phase_sections:
+                        ps_id = ps["id"]
+                        section_key = ps["section_key"]
+                        
+                        # Get items for this phase section
+                        cur.execute("""
+                            SELECT id, content FROM items 
+                            WHERE phase_section_id = %s 
+                            ORDER BY sort_order
+                        """, (ps_id,))
+                        items = [{"id": row["id"], "content": row["content"]} for row in cur.fetchall()]
+                        sections_dict[section_key] = items
+                    
+                    phase_list.append({
+                        "id": phase_id,
+                        "phase": phase["phase"],
+                        "title": phase["title"],
+                        "icon": phase["icon"],
+                        "color": phase["color"],
+                        "status": phase["status"],
+                        "sections": sections_dict
+                    })
+                
+                result.append({
+                    "id": section["id"],
+                    "label": section["label"],
+                    "icon": section["icon"],
+                    "color": section["color"],
+                    "phases": phase_list
+                })
+            
+            return result
+
+def import_static_data():
+    """Import the static data from roadmap_data.py into the database."""
+    sections = get_all_sections()  # This loads from the static file
+    
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i, section in enumerate(sections):
+                # Insert section
+                cur.execute("""
+                    INSERT INTO sections (id, label, icon, color, sort_order)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                """, (section["id"], section["label"], section["icon"], section["color"], i))
+                
+                for j, phase in enumerate(section["phases"]):
+                    phase_id = phase["id"]
+                    
+                    # Insert phase
+                    cur.execute("""
+                        INSERT INTO phases (id, section_id, phase, title, icon, color, status, sort_order)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO NOTHING
+                    """, (phase_id, section["id"], phase["phase"], phase["title"], 
+                         phase["icon"], phase["color"], phase.get("status", "upcoming"), j))
+                    
+                    # Insert phase sections and items
+                    for section_key, items in phase["sections"].items():
+                        # Insert phase section
+                        cur.execute("""
+                            INSERT INTO phase_sections (phase_id, section_key)
+                            VALUES (%s, %s)
+                            ON CONFLICT (phase_id, section_key) DO NOTHING
+                        """, (phase_id, section_key))
+                        
+                        # Get the phase_section_id
+                        cur.execute("""
+                            SELECT id FROM phase_sections 
+                            WHERE phase_id = %s AND section_key = %s
+                        """, (phase_id, section_key))
+                        ps_row = cur.fetchone()
+                        if ps_row:
+                            ps_id = ps_row["id"]
+                            
+                            # Insert items
+                            for k, item in enumerate(items):
+                                cur.execute("""
+                                    INSERT INTO items (phase_section_id, content, sort_order)
+                                    VALUES (%s, %s, %s)
+                                """, (ps_id, item, k))
+            
+            conn.commit()
+
+def get_all_sections():
+    """Get all sections - try database first, fall back to static data."""
+    try:
+        sections = get_all_sections_db()
+        if not sections:  # If database is empty, import static data
+            import_static_data()
+            sections = get_all_sections_db()
+        return sections
+    except Exception:
+        # Fall back to static data if database issues
+        return [json.loads(json.dumps(s)) for s in ALL_SECTIONS]
+
 def load_progress():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT checked, streak_dates, last_check, total_items, overall_pct FROM progress WHERE id = 'main'")
-            row = cur.fetchone()
+            try:
+                cur.execute("SELECT checked, streak_dates, last_check, total_items, overall_pct FROM progress WHERE id = 'main'")
+                row = cur.fetchone()
+            except psycopg2.Error:
+                # Fall back if columns don't exist yet
+                cur.execute("SELECT checked, streak_dates, last_check FROM progress WHERE id = 'main'")
+                row = cur.fetchone()
+                if row:
+                    return {
+                        "checked": row["checked"] or {},
+                        "streak": {
+                            "dates":      row["streak_dates"] or [],
+                            "last_check": row["last_check"],
+                        },
+                        "total_items": calculate_total_items(),
+                        "overall_pct": 0.0,
+                    }
     if not row:
         total_items = calculate_total_items()
         return {
@@ -258,6 +453,14 @@ async def dashboard(request: Request):
         "all_sections": sections,
     })
 
+@app.get("/manage", response_class=HTMLResponse)
+async def manage(request: Request):
+    sections = get_all_sections()
+    return templates.TemplateResponse("manage.html", {
+        "request": request,
+        "sections": sections,
+    })
+
 # ── toggle ─────────────────────────────────────────────────────────────────────
 @app.post("/toggle", response_class=HTMLResponse)
 async def toggle(request: Request, key: str = Form(...)):
@@ -296,6 +499,145 @@ async def toggle(request: Request, key: str = Form(...)):
     checkbox_html = _checkbox_row(key, item_text, is_done, color)
     stats_html    = _stats_oob(stats, streak, study_days)
     return HTMLResponse(checkbox_html + stats_html)
+
+# ── Management API ─────────────────────────────────────────────────────────────
+
+# Sections
+@app.post("/api/sections", response_class=JSONResponse)
+async def create_section(request: Request):
+    data = await request.json()
+    section_id = slugify(data["label"])
+    
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Get max sort order
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM sections")
+            sort_order = cur.fetchone()[0]
+            
+            cur.execute("""
+                INSERT INTO sections (id, label, icon, color, sort_order)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (section_id, data["label"], data["icon"], data["color"], sort_order))
+            conn.commit()
+            return {"id": cur.fetchone()[0]}
+
+@app.put("/api/sections/{section_id}", response_class=JSONResponse)
+async def update_section(section_id: str, request: Request):
+    data = await request.json()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE sections 
+                SET label = %s, icon = %s, color = %s
+                WHERE id = %s
+            """, (data["label"], data["icon"], data["color"], section_id))
+            conn.commit()
+    return {"success": True}
+
+@app.delete("/api/sections/{section_id}", response_class=JSONResponse)
+async def delete_section(section_id: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sections WHERE id = %s", (section_id,))
+            conn.commit()
+    return {"success": True}
+
+# Phases
+@app.post("/api/sections/{section_id}/phases", response_class=JSONResponse)
+async def create_phase(section_id: str, request: Request):
+    data = await request.json()
+    phase_id = f"{section_id}_{slugify(data['title'])}"
+    
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Get max sort order
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM phases WHERE section_id = %s", (section_id,))
+            sort_order = cur.fetchone()[0]
+            
+            cur.execute("""
+                INSERT INTO phases (id, section_id, phase, title, icon, color, status, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (phase_id, section_id, data["phase"], data["title"], data["icon"], 
+                 data["color"], data.get("status", "upcoming"), sort_order))
+            conn.commit()
+            return {"id": cur.fetchone()[0]}
+
+@app.put("/api/phases/{phase_id}", response_class=JSONResponse)
+async def update_phase(phase_id: str, request: Request):
+    data = await request.json()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE phases 
+                SET phase = %s, title = %s, icon = %s, color = %s, status = %s
+                WHERE id = %s
+            """, (data["phase"], data["title"], data["icon"], data["color"], 
+                 data.get("status", "upcoming"), phase_id))
+            conn.commit()
+    return {"success": True}
+
+@app.delete("/api/phases/{phase_id}", response_class=JSONResponse)
+async def delete_phase(phase_id: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM phases WHERE id = %s", (phase_id,))
+            conn.commit()
+    return {"success": True}
+
+# Items
+@app.post("/api/phases/{phase_id}/sections/{section_key}/items", response_class=JSONResponse)
+async def create_item(phase_id: str, section_key: str, request: Request):
+    data = await request.json()
+    
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Get or create phase_section
+            cur.execute("""
+                INSERT INTO phase_sections (phase_id, section_key)
+                VALUES (%s, %s)
+                ON CONFLICT (phase_id, section_key) DO NOTHING
+            """, (phase_id, section_key))
+            
+            cur.execute("""
+                SELECT id FROM phase_sections 
+                WHERE phase_id = %s AND section_key = %s
+            """, (phase_id, section_key))
+            ps_id = cur.fetchone()[0]
+            
+            # Get max sort order
+            cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM items WHERE phase_section_id = %s", (ps_id,))
+            sort_order = cur.fetchone()[0]
+            
+            cur.execute("""
+                INSERT INTO items (phase_section_id, content, sort_order)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (ps_id, data["content"], sort_order))
+            conn.commit()
+            return {"id": cur.fetchone()[0]}
+
+@app.put("/api/items/{item_id}", response_class=JSONResponse)
+async def update_item(item_id: int, request: Request):
+    data = await request.json()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE items 
+                SET content = %s
+                WHERE id = %s
+            """, (data["content"], item_id))
+            conn.commit()
+    return {"success": True}
+
+@app.delete("/api/items/{item_id}", response_class=JSONResponse)
+async def delete_item(item_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM items WHERE id = %s", (item_id,))
+            conn.commit()
+    return {"success": True}
 
 # ── HTML fragment helpers ──────────────────────────────────────────────────────
 def _checkbox_row(key, text, done, color):
