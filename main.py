@@ -6,14 +6,14 @@ import json, os, re
 from datetime import date, datetime
 from roadmap_data import ALL_SECTIONS
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-
-DATA_FILE   = os.path.join(DATA_DIR, "progress.json")
 
 SECTION_META = {
     "topics":           ("📚", "Topics"),
@@ -30,25 +30,72 @@ PALETTE = [
     "#34d399","#fbbf24","#f87171","#38bdf8","#c084fc",
 ]
 
-# ── persistence ───────────────────────────────────────────────────────────────
+# ── database ───────────────────────────────────────────────────────────────────
+def get_db():
+    """Open a connection using the DATABASE_URL environment variable."""
+    return psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=RealDictCursor)
+
+def init_db():
+    """Create the progress table if it doesn't exist yet."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS progress (
+                    id           TEXT PRIMARY KEY DEFAULT 'main',
+                    checked      JSONB NOT NULL DEFAULT '{}',
+                    streak_dates JSONB NOT NULL DEFAULT '[]',
+                    last_check   TEXT
+                )
+            """)
+            # Ensure the single row exists
+            cur.execute("""
+                INSERT INTO progress (id) VALUES ('main')
+                ON CONFLICT (id) DO NOTHING
+            """)
+        conn.commit()
+
+# Run once when the server starts
+init_db()
+
 def load_progress():
-    if not os.path.exists(DATA_FILE):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT checked, streak_dates, last_check FROM progress WHERE id = 'main'")
+            row = cur.fetchone()
+    if not row:
         return {"checked": {}, "streak": {"dates": [], "last_check": None}}
-    with open(DATA_FILE) as f:
-        return json.load(f)
+    return {
+        "checked": row["checked"] or {},
+        "streak": {
+            "dates":      row["streak_dates"] or [],
+            "last_check": row["last_check"],
+        },
+    }
 
 def save_progress(data):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    checked      = data.get("checked", {})
+    streak_dates = data["streak"].get("dates", [])
+    last_check   = data["streak"].get("last_check")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO progress (id, checked, streak_dates, last_check)
+                VALUES ('main', %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                  SET checked      = EXCLUDED.checked,
+                      streak_dates = EXCLUDED.streak_dates,
+                      last_check   = EXCLUDED.last_check
+            """, (json.dumps(checked), json.dumps(streak_dates), last_check))
+        conn.commit()
 
+# ── helpers ────────────────────────────────────────────────────────────────────
 def get_all_sections():
     return [json.loads(json.dumps(s)) for s in ALL_SECTIONS]
 
 def slugify(text):
     return re.sub(r"[^a-z0-9_]", "_", text.lower().strip())[:40]
 
-# ── streak ────────────────────────────────────────────────────────────────────
+# ── streak ─────────────────────────────────────────────────────────────────────
 def update_streak(progress):
     today = str(date.today())
     dates = set(progress["streak"].get("dates", []))
@@ -74,7 +121,7 @@ def compute_streak(dates):
             break
     return streak
 
-# ── stats ─────────────────────────────────────────────────────────────────────
+# ── stats ──────────────────────────────────────────────────────────────────────
 def build_stats(progress, sections=None):
     if sections is None:
         sections = get_all_sections()
@@ -123,7 +170,7 @@ def build_stats(progress, sections=None):
         "overall_pct": round(grand_done / grand_total * 100) if grand_total else 0,
     }
 
-# ── routes ────────────────────────────────────────────────────────────────────
+# ── routes ─────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     progress = load_progress()
@@ -180,7 +227,7 @@ async def dashboard(request: Request):
         "all_sections": sections,
     })
 
-# ── toggle ────────────────────────────────────────────────────────────────────
+# ── toggle ─────────────────────────────────────────────────────────────────────
 @app.post("/toggle", response_class=HTMLResponse)
 async def toggle(request: Request, key: str = Form(...)):
     progress = load_progress()
@@ -219,7 +266,7 @@ async def toggle(request: Request, key: str = Form(...)):
     stats_html    = _stats_oob(stats, streak, study_days)
     return HTMLResponse(checkbox_html + stats_html)
 
-# ── HTML fragment helpers ─────────────────────────────────────────────────────
+# ── HTML fragment helpers ──────────────────────────────────────────────────────
 def _checkbox_row(key, text, done, color):
     cls      = "checked" if done else ""
     mark     = "✓" if done else ""
