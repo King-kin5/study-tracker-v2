@@ -44,7 +44,9 @@ def init_db():
                     id           TEXT PRIMARY KEY DEFAULT 'main',
                     checked      JSONB NOT NULL DEFAULT '{}',
                     streak_dates JSONB NOT NULL DEFAULT '[]',
-                    last_check   TEXT
+                    last_check   TEXT,
+                    total_items  INTEGER NOT NULL DEFAULT 0,
+                    overall_pct  FLOAT NOT NULL DEFAULT 0.0
                 )
             """)
             # Ensure the single row exists
@@ -57,35 +59,64 @@ def init_db():
 # Run once when the server starts
 init_db()
 
+def calculate_total_items(sections=None):
+    """Calculate the total number of items across all sections."""
+    if sections is None:
+        sections = get_all_sections()
+    total = 0
+    for section in sections:
+        for phase in section["phases"]:
+            for items in phase["sections"].values():
+                total += len(items)
+    return total
+
 def load_progress():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT checked, streak_dates, last_check FROM progress WHERE id = 'main'")
+            cur.execute("SELECT checked, streak_dates, last_check, total_items, overall_pct FROM progress WHERE id = 'main'")
             row = cur.fetchone()
     if not row:
-        return {"checked": {}, "streak": {"dates": [], "last_check": None}}
+        total_items = calculate_total_items()
+        return {
+            "checked": {},
+            "streak": {"dates": [], "last_check": None},
+            "total_items": total_items,
+            "overall_pct": 0.0,
+        }
+    total_items = row["total_items"] or 0
+    overall_pct = row["overall_pct"] or 0.0
     return {
         "checked": row["checked"] or {},
         "streak": {
             "dates":      row["streak_dates"] or [],
             "last_check": row["last_check"],
         },
+        "total_items": total_items,
+        "overall_pct": overall_pct,
     }
 
 def save_progress(data):
     checked      = data.get("checked", {})
     streak_dates = data["streak"].get("dates", [])
     last_check   = data["streak"].get("last_check")
+    
+    # Calculate percentage
+    total_items = calculate_total_items()
+    done_items = len(checked)
+    overall_pct = round(done_items / total_items * 100) if total_items else 0.0
+    
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO progress (id, checked, streak_dates, last_check)
-                VALUES ('main', %s, %s, %s)
+                INSERT INTO progress (id, checked, streak_dates, last_check, total_items, overall_pct)
+                VALUES ('main', %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE
                   SET checked      = EXCLUDED.checked,
                       streak_dates = EXCLUDED.streak_dates,
-                      last_check   = EXCLUDED.last_check
-            """, (json.dumps(checked), json.dumps(streak_dates), last_check))
+                      last_check   = EXCLUDED.last_check,
+                      total_items  = EXCLUDED.total_items,
+                      overall_pct  = EXCLUDED.overall_pct
+            """, (json.dumps(checked), json.dumps(streak_dates), last_check, total_items, overall_pct))
         conn.commit()
 
 # ── helpers ────────────────────────────────────────────────────────────────────
