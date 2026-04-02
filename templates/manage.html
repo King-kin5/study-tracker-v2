@@ -5,177 +5,950 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Manage Roadmap — Study Tracker</title>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-  <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/base.css">
   <style>
-    .manage-container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-    .section-card { background: #1e293b; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
-    .section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-    .section-icon { font-size: 2rem; }
-    .section-title { font-size: 1.5rem; font-weight: 600; flex: 1; }
-    .phase-card { background: #0f172a; border-radius: 6px; padding: 1rem; margin: 0.5rem 0; }
-    .phase-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
-    .item-list { margin-left: 1rem; }
-    .item { background: #334155; padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; }
-    .add-form { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-    .add-input { flex: 1; padding: 0.5rem; background: #334155; border: 1px solid #475569; border-radius: 4px; color: white; }
-    .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
-    .btn-primary { background: #3b82f6; color: white; }
-    .btn-danger { background: #ef4444; color: white; }
-    .btn-success { background: #10b981; color: white; }
-    .edit-btn { background: #f59e0b; color: white; margin-left: 0.5rem; }
-    .delete-btn { background: #ef4444; color: white; margin-left: 0.5rem; }
+    /* ── Layout ─────────────────────────────────────── */
+    .mgr-wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 6rem;
+    }
+
+    /* ── Page header ─────────────────────────────────── */
+    .mgr-hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2.5rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .mgr-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #e2e8f0 30%, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .mgr-subtitle {
+      color: #64748b;
+      font-size: .85rem;
+      margin-top: .2rem;
+    }
+
+    /* ── Btn system ──────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .5rem 1rem;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Outfit', sans-serif;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); filter: brightness(.95); }
+    .btn-primary   { background: #3b82f6; color: #fff; }
+    .btn-success   { background: #10b981; color: #fff; }
+    .btn-danger    { background: #ef4444; color: #fff; }
+    .btn-warning   { background: #f59e0b; color: #0f172a; }
+    .btn-ghost     { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .btn-sm        { padding: .3rem .7rem; font-size: .78rem; border-radius: 6px; }
+    .btn-icon      { padding: .4rem; width: 32px; height: 32px; justify-content: center; border-radius: 7px; }
+
+    /* ── Section cards ───────────────────────────────── */
+    .sec-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      margin-bottom: 1.2rem;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .sec-card:hover { border-color: #334155; }
+
+    .sec-head {
+      display: flex;
+      align-items: center;
+      gap: .8rem;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      user-select: none;
+      background: #0f172a;
+    }
+    .sec-color-bar {
+      width: 4px;
+      height: 36px;
+      border-radius: 99px;
+      flex-shrink: 0;
+    }
+    .sec-icon { font-size: 1.6rem; flex-shrink: 0; }
+    .sec-info { flex: 1; min-width: 0; }
+    .sec-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sec-meta { font-size: .78rem; color: #475569; margin-top: .1rem; }
+    .sec-chevron {
+      color: #475569;
+      font-size: .9rem;
+      transition: transform .25s;
+      flex-shrink: 0;
+    }
+    .sec-card.open .sec-chevron { transform: rotate(180deg); }
+    .sec-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+
+    .sec-body {
+      display: none;
+      padding: 0 1.25rem 1.25rem;
+    }
+    .sec-card.open .sec-body { display: block; }
+
+    /* ── Phase list ──────────────────────────────────── */
+    .phase-list { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+
+    .phase-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .phase-head {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .75rem 1rem;
+      cursor: pointer;
+    }
+    .phase-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .phase-name-wrap { flex: 1; min-width: 0; }
+    .phase-tag { font-size: .72rem; color: #64748b; font-family: 'DM Mono', monospace; }
+    .phase-title-txt {
+      font-size: .9rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .phase-status-badge {
+      font-size: .68rem;
+      padding: .15rem .5rem;
+      border-radius: 99px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      flex-shrink: 0;
+    }
+    .phase-status-badge.upcoming  { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+    .phase-status-badge.current   { background: #1e4080; color: #93c5fd; }
+    .phase-status-badge.completed { background: #14532d; color: #86efac; }
+    .phase-actions { display: flex; gap: .3rem; flex-shrink: 0; }
+
+    .phase-body { display: none; padding: 0 1rem 1rem; }
+    .phase-card.open .phase-body { display: block; }
+    .phase-chevron { color: #475569; font-size: .8rem; transition: transform .2s; }
+    .phase-card.open .phase-chevron { transform: rotate(180deg); }
+
+    /* ── Section tabs (topics, papers, etc.) ─────────── */
+    .sk-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem;
+      margin-bottom: .75rem;
+      border-bottom: 1px solid #334155;
+      padding-bottom: .5rem;
+    }
+    .sk-tab {
+      padding: .3rem .75rem;
+      border-radius: 6px;
+      font-size: .78rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .15s;
+      background: transparent;
+      font-family: 'Outfit', sans-serif;
+    }
+    .sk-tab:hover { color: #e2e8f0; border-color: #334155; }
+    .sk-tab.active {
+      background: #1e293b;
+      border-color: #334155;
+      color: #e2e8f0;
+    }
+
+    .sk-panel { display: none; }
+    .sk-panel.active { display: block; }
+
+    /* ── Items ───────────────────────────────────────── */
+    .items-wrap { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .75rem; }
+    .item-row {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .5rem .75rem;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 7px;
+      transition: border-color .15s;
+    }
+    .item-row:hover { border-color: #334155; }
+    .item-text {
+      flex: 1;
+      font-size: .82rem;
+      color: #cbd5e1;
+      line-height: 1.4;
+      min-width: 0;
+    }
+    .item-actions { display: flex; gap: .25rem; flex-shrink: 0; }
+
+    /* ── Add item inline form ────────────────────────── */
+    .add-item-form {
+      display: flex;
+      gap: .4rem;
+      margin-top: .5rem;
+    }
+    .inp {
+      flex: 1;
+      padding: .5rem .75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 7px;
+      color: #e2e8f0;
+      font-family: 'Outfit', sans-serif;
+      font-size: .83rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .inp:focus { border-color: #60a5fa; }
+    .inp::placeholder { color: #475569; }
+
+    /* ── Add phase strip ──────────────────────────────── */
+    .add-phase-strip {
+      margin-top: .75rem;
+      padding: .75rem;
+      background: #1e293b;
+      border-radius: 10px;
+      border: 1px dashed #334155;
+    }
+    .add-phase-strip h4 {
+      font-size: .8rem;
+      font-weight: 600;
+      color: #64748b;
+      margin-bottom: .6rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-family: 'Outfit', sans-serif;
+    }
+    .add-phase-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 60px 56px 110px auto;
+      gap: .4rem;
+      align-items: center;
+    }
+    @media (max-width: 680px) {
+      .add-phase-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── Add section strip ────────────────────────────── */
+    .add-sec-strip {
+      padding: 1rem;
+      background: #0f172a;
+      border: 1px dashed #334155;
+      border-radius: 14px;
+      margin-bottom: 1.5rem;
+    }
+    .add-sec-strip h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: .95rem;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-bottom: .75rem;
+    }
+    .add-sec-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      align-items: center;
+    }
+    .inp-color {
+      width: 44px; height: 36px;
+      padding: 2px 4px;
+      border-radius: 7px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      cursor: pointer;
+    }
+
+    /* ── Modal overlay ───────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.75);
+      backdrop-filter: blur(4px);
+      z-index: 900;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 2rem;
+      width: min(480px, 95vw);
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 25px 60px rgba(0,0,0,.5);
+    }
+    .modal-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 1.25rem;
+    }
+    .modal-close {
+      position: absolute;
+      top: 1rem; right: 1rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 7px;
+      color: #94a3b8;
+      width: 30px; height: 30px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .modal-close:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .modal-field { margin-bottom: 1rem; }
+    .modal-label {
+      display: block;
+      font-size: .78rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: .4rem;
+      font-family: 'Outfit', sans-serif;
+    }
+    .modal-inp {
+      width: 100%;
+      box-sizing: border-box;
+      padding: .6rem .85rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-family: 'Outfit', sans-serif;
+      font-size: .88rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .modal-inp:focus { border-color: #60a5fa; }
+    .modal-inp::placeholder { color: #475569; }
+    .modal-row { display: flex; gap: .6rem; }
+    .modal-row .modal-field { flex: 1; }
+    .modal-footer {
+      display: flex;
+      gap: .5rem;
+      justify-content: flex-end;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #1e293b;
+    }
+
+    /* ── Toast ───────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem; right: 1.5rem;
+      background: #10b981;
+      color: #fff;
+      padding: .6rem 1.1rem;
+      border-radius: 10px;
+      font-size: .85rem;
+      font-weight: 600;
+      font-family: 'Outfit', sans-serif;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all .25s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { background: #ef4444; }
+
+    /* ── Confirm dialog ──────────────────────────────── */
+    #confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #confirm-overlay.open { display: flex; }
+    #confirm-box {
+      background: #0f172a;
+      border: 1px solid #ef444455;
+      border-radius: 14px;
+      padding: 1.75rem;
+      width: min(360px, 94vw);
+      text-align: center;
+    }
+    #confirm-box .conf-icon { font-size: 2.2rem; margin-bottom: .5rem; }
+    #confirm-box .conf-msg { color: #cbd5e1; margin-bottom: 1.25rem; font-size: .9rem; }
+    #confirm-box .conf-btns { display: flex; gap: .5rem; justify-content: center; }
+
+    /* ── Empty state ─────────────────────────────────── */
+    .empty {
+      text-align: center;
+      padding: 2rem;
+      color: #475569;
+      font-size: .85rem;
+    }
+
+    /* ── Loading spinner ─────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #334155;
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    select.modal-inp option { background: #1e293b; }
+    select.inp option { background: #1e293b; }
   </style>
 </head>
 <body>
+{% set sections = all_sections %}
 {% include "partials/sidebar.html" %}
 <main class="main">
   {% include "partials/topbar.html" %}
 
-  <div class="manage-container">
-    <h1 class="section-heading">Manage Roadmap</h1>
-
-    <!-- Add New Section -->
-    <div class="section-card">
-      <h2>Add New Section</h2>
-      <form hx-post="/api/sections" hx-target="#sections-list" hx-swap="beforeend" class="add-form">
-        <input type="text" name="label" placeholder="Section name" required class="add-input">
-        <input type="text" name="icon" placeholder="Icon (e.g. 🤖)" required class="add-input" style="width: 100px;">
-        <input type="color" name="color" value="#60a5fa" required class="add-input" style="width: 60px;">
-        <button type="submit" class="btn btn-primary">Add Section</button>
-      </form>
+  <div class="mgr-wrap">
+    <!-- Hero -->
+    <div class="mgr-hero">
+      <div>
+        <div class="mgr-title">⚙️ Manage Roadmap</div>
+        <div class="mgr-subtitle">Add, edit or delete sections, phases and items</div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddSection()">
+        <span>＋</span> New Section
+      </button>
     </div>
 
-    <!-- Sections List -->
-    <div id="sections-list">
+    <!-- Add section strip -->
+    <div class="add-sec-strip" id="add-sec-strip" style="display:none">
+      <h3>New Section</h3>
+      <div class="add-sec-grid">
+        <input class="inp" id="ns-label" placeholder="Name (e.g. Mathematics)" style="min-width:160px;flex:1">
+        <input class="inp" id="ns-icon"  placeholder="Icon 🎯" style="width:80px;flex:none">
+        <input type="color" class="inp-color" id="ns-color" value="#60a5fa" title="Pick colour">
+        <button class="btn btn-success" onclick="createSection()">Add</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeAddSection()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Sections list -->
+    <div id="sections-root">
       {% for section in sections %}
-      <div class="section-card" id="section-{{ section.id }}">
-        <div class="section-header">
-          <span class="section-icon">{{ section.icon }}</span>
-          <span class="section-title">{{ section.label }}</span>
-          <button class="btn edit-btn" onclick="editSection('{{ section.id }}', '{{ section.label }}', '{{ section.icon }}', '{{ section.color }}')">Edit</button>
-          <button class="btn delete-btn" hx-delete="/api/sections/{{ section.id }}" hx-confirm="Delete this section and all its content?">Delete</button>
+      <div class="sec-card" id="sec-{{ section.id }}" data-id="{{ section.id }}">
+        <div class="sec-head" onclick="toggleCard(this)">
+          <div class="sec-color-bar" style="background:{{ section.color }}"></div>
+          <div class="sec-icon">{{ section.icon }}</div>
+          <div class="sec-info">
+            <div class="sec-label">{{ section.label }}</div>
+            <div class="sec-meta">{{ section.phases | length }} phases</div>
+          </div>
+          <div class="sec-actions" onclick="event.stopPropagation()">
+            <button class="btn btn-warning btn-sm btn-icon"
+              title="Edit section"
+              onclick="openEditSection('{{ section.id }}','{{ section.label|replace("'","\\'")|e }}','{{ section.icon }}','{{ section.color }}')">✏️</button>
+            <button class="btn btn-danger btn-sm btn-icon"
+              title="Delete section"
+              onclick="confirmDelete('section','{{ section.id }}','Delete section <b>{{ section.label }}</b> and ALL its phases and items?')">🗑</button>
+          </div>
+          <span class="sec-chevron">▼</span>
         </div>
 
-        <!-- Phases -->
-        <div class="phases-list" id="phases-{{ section.id }}">
-          {% for phase in section.phases %}
-          <div class="phase-card" id="phase-{{ phase.id }}">
-            <div class="phase-header">
-              <span>{{ phase.icon }}</span>
-              <span><strong>{{ phase.phase }}:</strong> {{ phase.title }}</span>
-              <button class="btn edit-btn" onclick="editPhase('{{ phase.id }}', '{{ phase.phase }}', '{{ phase.title }}', '{{ phase.icon }}', '{{ phase.color }}', '{{ phase.status }}')">Edit</button>
-              <button class="btn delete-btn" hx-delete="/api/phases/{{ phase.id }}" hx-confirm="Delete this phase?">Delete</button>
-            </div>
-
-            <!-- Items by section type -->
-            {% for section_key, items in phase.sections.items() %}
-            <div class="item-section">
-              <h4>{{ section_key|replace('_', ' ')|title }}</h4>
-              <div class="item-list" id="items-{{ phase.id }}-{{ section_key }}">
-                {% for item in items %}
-                <div class="item" id="item-{{ item.id if item is mapping else loop.index }}">
-                  {{ item.content if item is mapping else item }}
-                  <button class="btn edit-btn" onclick="editItem({{ item.id if item is mapping else loop.index }}, '{{ (item.content if item is mapping else item)|replace("'", "\\'") }}', '{{ phase.id }}', '{{ section_key }}')">Edit</button>
-                  <button class="btn delete-btn" hx-delete="/api/items/{{ item.id if item is mapping else loop.index }}" hx-target="closest .item" hx-swap="outerHTML">Delete</button>
+        <div class="sec-body">
+          <!-- Phase list -->
+          <div class="phase-list" id="phases-{{ section.id }}">
+            {% for phase in section.phases %}
+            <div class="phase-card" id="ph-{{ phase.id }}" data-id="{{ phase.id }}">
+              <div class="phase-head" onclick="toggleCard(this)">
+                <div class="phase-dot" style="background:{{ phase.color }}"></div>
+                <div class="phase-name-wrap">
+                  <div class="phase-tag">{{ phase.phase }}</div>
+                  <div class="phase-title-txt">{{ phase.title }}</div>
                 </div>
-                {% endfor %}
+                <span class="phase-status-badge {{ phase.status }}">{{ phase.status }}</span>
+                <div class="phase-actions" onclick="event.stopPropagation()">
+                  <button class="btn btn-warning btn-sm btn-icon" title="Edit phase"
+                    onclick="openEditPhase('{{ phase.id }}','{{ phase.phase|replace("'","\\'")|e }}','{{ phase.title|replace("'","\\'")|e }}','{{ phase.icon }}','{{ phase.color }}','{{ phase.status }}')">✏️</button>
+                  <button class="btn btn-danger btn-sm btn-icon" title="Delete phase"
+                    onclick="confirmDelete('phase','{{ phase.id }}','Delete phase <b>{{ phase.title }}</b>?')">🗑</button>
+                </div>
+                <span class="phase-chevron">▼</span>
               </div>
 
-              <!-- Add Item Form -->
-              <form hx-post="/api/phases/{{ phase.id }}/sections/{{ section_key }}/items" hx-target="#items-{{ phase.id }}-{{ section_key }}" hx-swap="beforeend" class="add-form">
-                <input type="text" name="content" placeholder="Add new {{ section_key|replace('_', ' ') }}" required class="add-input">
-                <button type="submit" class="btn btn-success">Add</button>
-              </form>
+              <div class="phase-body">
+                <!-- Sub-section tabs -->
+                {% set sk_meta = {
+                  "topics":           ("📚","Topics"),
+                  "papers_read":      ("📄","Papers to Read"),
+                  "papers_implement": ("🔬","Papers to Implement"),
+                  "experiments":      ("⚗️","Experiments"),
+                  "projects":         ("🛠️","Projects")
+                } %}
+                <div class="sk-tabs">
+                  {% for sk, sm in sk_meta.items() %}
+                  {% if sk in phase.sections %}
+                  <button class="sk-tab {% if loop.first %}active{% endif %}"
+                          data-tab="{{ phase.id }}-{{ sk }}"
+                          onclick="switchSkTab(this,'{{ phase.id }}','{{ sk }}')">
+                    {{ sm[0] }} {{ sm[1] }}
+                    <span style="color:#64748b;font-weight:400;font-size:.72rem">({{ phase.sections[sk]|length }})</span>
+                  </button>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+
+                {% for sk, sm in sk_meta.items() %}
+                {% if sk in phase.sections %}
+                <div class="sk-panel {% if loop.first %}active{% endif %}" id="skp-{{ phase.id }}-{{ sk }}">
+                  <div class="items-wrap" id="items-{{ phase.id }}-{{ sk }}">
+                    {% for item in phase.sections[sk] %}
+                    <div class="item-row" id="item-{{ item.id }}">
+                      <span class="item-text">{{ item.content }}</span>
+                      <div class="item-actions">
+                        <button class="btn btn-warning btn-sm btn-icon"
+                          onclick="openEditItem({{ item.id }},'{{ item.content|replace("'","\\'")|replace('"','\\"')|e }}')">✏️</button>
+                        <button class="btn btn-danger btn-sm btn-icon"
+                          onclick="confirmDelete('item',{{ item.id }},'Delete this item?')">🗑</button>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <div class="add-item-form">
+                    <input class="inp" placeholder="Add new item…"
+                           onkeydown="if(event.key==='Enter')addItem(this,'{{ phase.id }}','{{ sk }}')"
+                           id="addinp-{{ phase.id }}-{{ sk }}">
+                    <button class="btn btn-success btn-sm"
+                            onclick="addItem(document.getElementById('addinp-{{ phase.id }}-{{ sk }}'),'{{ phase.id }}','{{ sk }}')">Add</button>
+                  </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                <!-- Add phase form -->
+              </div>
             </div>
             {% endfor %}
           </div>
-          {% endfor %}
-        </div>
 
-        <!-- Add Phase Form -->
-        <div class="add-form" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155;">
-          <h3>Add New Phase</h3>
-          <form hx-post="/api/sections/{{ section.id }}/phases" hx-target="#phases-{{ section.id }}" hx-swap="beforeend">
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-              <input type="text" name="phase" placeholder="Phase (e.g. Phase 1)" required class="add-input">
-              <input type="text" name="title" placeholder="Title" required class="add-input">
-              <input type="text" name="icon" placeholder="Icon" required class="add-input" style="width: 80px;">
-              <input type="color" name="color" value="#60a5fa" required class="add-input" style="width: 60px;">
-              <select name="status" class="add-input" style="width: 120px;">
+          <!-- Add Phase strip -->
+          <div class="add-phase-strip">
+            <h4>＋ New Phase</h4>
+            <div class="add-phase-grid">
+              <input class="inp" placeholder="Phase (e.g. Phase 1)" id="np-phase-{{ section.id }}">
+              <input class="inp" placeholder="Title" id="np-title-{{ section.id }}">
+              <input class="inp" placeholder="🧠" id="np-icon-{{ section.id }}" style="width:60px">
+              <input type="color" class="inp-color" id="np-color-{{ section.id }}" value="#60a5fa">
+              <select class="inp" id="np-status-{{ section.id }}" style="font-size:.8rem">
                 <option value="upcoming">Upcoming</option>
                 <option value="current">Current</option>
                 <option value="completed">Completed</option>
               </select>
-              <button type="submit" class="btn btn-primary">Add Phase</button>
+              <button class="btn btn-primary btn-sm"
+                      onclick="createPhase('{{ section.id }}')">Add</button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
       {% endfor %}
+
+      {% if not sections %}
+      <div class="empty">No sections yet. Create one above ↑</div>
+      {% endif %}
     </div>
   </div>
-
-  <!-- Edit Modals/Dialogs -->
-  <div id="edit-section-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1e293b; padding: 2rem; border-radius: 8px; min-width: 400px;">
-      <h3>Edit Section</h3>
-      <form id="edit-section-form" class="add-form" style="flex-direction: column;">
-        <input type="text" id="edit-section-label" name="label" required class="add-input">
-        <input type="text" id="edit-section-icon" name="icon" required class="add-input">
-        <input type="color" id="edit-section-color" name="color" required class="add-input">
-        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-          <button type="button" class="btn btn-primary" onclick="saveSectionEdit()">Save</button>
-          <button type="button" class="btn" onclick="closeModal()">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script>
-    let currentEditSectionId = null;
-    let currentEditPhaseId = null;
-    let currentEditItemId = null;
-
-    function editSection(id, label, icon, color) {
-      currentEditSectionId = id;
-      document.getElementById('edit-section-label').value = label;
-      document.getElementById('edit-section-icon').value = icon;
-      document.getElementById('edit-section-color').value = color;
-      document.getElementById('edit-section-modal').style.display = 'block';
-    }
-
-    function saveSectionEdit() {
-      const form = document.getElementById('edit-section-form');
-      const formData = new FormData(form);
-      const data = Object.fromEntries(formData);
-
-      fetch(`/api/sections/${currentEditSectionId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(() => {
-        closeModal();
-        location.reload();
-      });
-    }
-
-    function editPhase(id, phase, title, icon, color, status) {
-      // Similar implementation for phase editing
-      alert('Phase editing not implemented yet');
-    }
-
-    function editItem(id, content, phaseId, sectionKey) {
-      // Similar implementation for item editing
-      alert('Item editing not implemented yet');
-    }
-
-    function closeModal() {
-      document.getElementById('edit-section-modal').style.display = 'none';
-      currentEditSectionId = null;
-    }
-  </script>
 </main>
+
+<!-- ── Edit Section Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-edit-section">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-edit-section')">✕</button>
+    <div class="modal-title">Edit Section</div>
+    <input type="hidden" id="es-id">
+    <div class="modal-row">
+      <div class="modal-field" style="flex:1">
+        <label class="modal-label">Name</label>
+        <input class="modal-inp" id="es-label" placeholder="Section name">
+      </div>
+      <div class="modal-field" style="flex:none;width:90px">
+        <label class="modal-label">Icon</label>
+        <input class="modal-inp" id="es-icon" placeholder="🤖">
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Color</label>
+      <input type="color" class="modal-inp" id="es-color" style="height:40px;padding:4px 8px;cursor:pointer">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-section')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSection()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Phase Modal ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-edit-phase">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-edit-phase')">✕</button>
+    <div class="modal-title">Edit Phase</div>
+    <input type="hidden" id="ep-id">
+    <div class="modal-row">
+      <div class="modal-field" style="width:130px;flex:none">
+        <label class="modal-label">Phase label</label>
+        <input class="modal-inp" id="ep-phase" placeholder="Phase 1">
+      </div>
+      <div class="modal-field" style="flex:1">
+        <label class="modal-label">Title</label>
+        <input class="modal-inp" id="ep-title" placeholder="Foundations">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-field" style="width:90px;flex:none">
+        <label class="modal-label">Icon</label>
+        <input class="modal-inp" id="ep-icon" placeholder="🧠">
+      </div>
+      <div class="modal-field" style="width:80px;flex:none">
+        <label class="modal-label">Color</label>
+        <input type="color" class="modal-inp" id="ep-color" style="height:40px;padding:4px 8px;cursor:pointer">
+      </div>
+      <div class="modal-field" style="flex:1">
+        <label class="modal-label">Status</label>
+        <select class="modal-inp" id="ep-status">
+          <option value="upcoming">Upcoming</option>
+          <option value="current">Current</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-phase')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePhase()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Item Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-edit-item">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-edit-item')">✕</button>
+    <div class="modal-title">Edit Item</div>
+    <input type="hidden" id="ei-id">
+    <div class="modal-field">
+      <label class="modal-label">Content</label>
+      <textarea class="modal-inp" id="ei-content" rows="3" style="resize:vertical"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-edit-item')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveItem()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm dialog ─────────────────────────────────────────────── -->
+<div id="confirm-overlay">
+  <div id="confirm-box">
+    <div class="conf-icon">⚠️</div>
+    <div class="conf-msg" id="confirm-msg">Are you sure?</div>
+    <div class="conf-btns">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok" onclick="doDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script src="/static/js/app.js"></script>
+<script>
+/* ── utilities ─────────────────────────────────────────────────────── */
+function toast(msg, err=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (err ? ' error' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 2600);
+}
+
+function toggleCard(headEl) {
+  headEl.parentElement.classList.toggle('open');
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+/* ── sub-section tabs ──────────────────────────────────────────────── */
+function switchSkTab(tabEl, phaseId, sk) {
+  const container = tabEl.closest('.phase-body');
+  container.querySelectorAll('.sk-tab').forEach(t => t.classList.remove('active'));
+  container.querySelectorAll('.sk-panel').forEach(p => p.classList.remove('active'));
+  tabEl.classList.add('active');
+  document.getElementById(`skp-${phaseId}-${sk}`).classList.add('active');
+}
+
+/* ── add section ───────────────────────────────────────────────────── */
+function openAddSection() {
+  const s = document.getElementById('add-sec-strip');
+  s.style.display = s.style.display === 'none' ? 'block' : 'none';
+}
+function closeAddSection() {
+  document.getElementById('add-sec-strip').style.display = 'none';
+}
+
+async function createSection() {
+  const label = document.getElementById('ns-label').value.trim();
+  const icon  = document.getElementById('ns-icon').value.trim() || '📁';
+  const color = document.getElementById('ns-color').value;
+  if (!label) { toast('Enter a section name', true); return; }
+
+  const r = await fetch('/api/sections', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({label, icon, color})
+  });
+  if (!r.ok) { toast('Error creating section', true); return; }
+  toast('Section created ✓');
+  closeAddSection();
+  location.reload();
+}
+
+/* ── edit section ──────────────────────────────────────────────────── */
+function openEditSection(id, label, icon, color) {
+  document.getElementById('es-id').value    = id;
+  document.getElementById('es-label').value = label;
+  document.getElementById('es-icon').value  = icon;
+  document.getElementById('es-color').value = color;
+  openModal('modal-edit-section');
+}
+
+async function saveSection() {
+  const id    = document.getElementById('es-id').value;
+  const label = document.getElementById('es-label').value.trim();
+  const icon  = document.getElementById('es-icon').value.trim();
+  const color = document.getElementById('es-color').value;
+  if (!label || !icon) { toast('Fill in all fields', true); return; }
+
+  const r = await fetch(`/api/sections/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({label, icon, color})
+  });
+  if (!r.ok) { toast('Error saving', true); return; }
+  toast('Section updated ✓');
+  closeModal('modal-edit-section');
+  location.reload();
+}
+
+/* ── edit phase ────────────────────────────────────────────────────── */
+function openEditPhase(id, phase, title, icon, color, status) {
+  document.getElementById('ep-id').value     = id;
+  document.getElementById('ep-phase').value  = phase;
+  document.getElementById('ep-title').value  = title;
+  document.getElementById('ep-icon').value   = icon;
+  document.getElementById('ep-color').value  = color;
+  document.getElementById('ep-status').value = status;
+  openModal('modal-edit-phase');
+}
+
+async function savePhase() {
+  const id     = document.getElementById('ep-id').value;
+  const phase  = document.getElementById('ep-phase').value.trim();
+  const title  = document.getElementById('ep-title').value.trim();
+  const icon   = document.getElementById('ep-icon').value.trim();
+  const color  = document.getElementById('ep-color').value;
+  const status = document.getElementById('ep-status').value;
+  if (!phase || !title) { toast('Fill in phase & title', true); return; }
+
+  const r = await fetch(`/api/phases/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({phase, title, icon, color, status})
+  });
+  if (!r.ok) { toast('Error saving', true); return; }
+  toast('Phase updated ✓');
+  closeModal('modal-edit-phase');
+  location.reload();
+}
+
+/* ── create phase ──────────────────────────────────────────────────── */
+async function createPhase(sectionId) {
+  const phase  = document.getElementById(`np-phase-${sectionId}`).value.trim();
+  const title  = document.getElementById(`np-title-${sectionId}`).value.trim();
+  const icon   = document.getElementById(`np-icon-${sectionId}`).value.trim() || '📌';
+  const color  = document.getElementById(`np-color-${sectionId}`).value;
+  const status = document.getElementById(`np-status-${sectionId}`).value;
+  if (!phase || !title) { toast('Enter phase label and title', true); return; }
+
+  const r = await fetch(`/api/sections/${sectionId}/phases`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({phase, title, icon, color, status})
+  });
+  if (!r.ok) { toast('Error creating phase', true); return; }
+  toast('Phase added ✓');
+  location.reload();
+}
+
+/* ── items ─────────────────────────────────────────────────────────── */
+async function addItem(inputEl, phaseId, sectionKey) {
+  const content = inputEl.value.trim();
+  if (!content) return;
+  inputEl.disabled = true;
+
+  const r = await fetch(`/api/phases/${phaseId}/sections/${sectionKey}/items`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  });
+  if (!r.ok) { toast('Error adding item', true); inputEl.disabled=false; return; }
+  const data = await r.json();
+
+  // Inject new item row into DOM without reload
+  const wrap = document.getElementById(`items-${phaseId}-${sectionKey}`);
+  const row  = document.createElement('div');
+  row.className = 'item-row';
+  row.id        = `item-${data.id}`;
+  row.innerHTML = `<span class="item-text">${escHtml(content)}</span>
+    <div class="item-actions">
+      <button class="btn btn-warning btn-sm btn-icon" onclick="openEditItem(${data.id},'${escJs(content)}')">✏️</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDelete('item',${data.id},'Delete this item?')">🗑</button>
+    </div>`;
+  wrap.appendChild(row);
+
+  // Update tab count badge
+  const tabEl = document.querySelector(`[data-tab="${phaseId}-${sectionKey}"]`);
+  if (tabEl) {
+    const span = tabEl.querySelector('span');
+    if (span) {
+      const cur = parseInt(span.textContent.replace(/\D/g,'')) || 0;
+      span.textContent = `(${cur+1})`;
+    }
+  }
+
+  inputEl.value = '';
+  inputEl.disabled = false;
+  toast('Item added ✓');
+}
+
+function openEditItem(id, content) {
+  document.getElementById('ei-id').value      = id;
+  document.getElementById('ei-content').value = content;
+  openModal('modal-edit-item');
+}
+
+async function saveItem() {
+  const id      = document.getElementById('ei-id').value;
+  const content = document.getElementById('ei-content').value.trim();
+  if (!content) { toast('Content cannot be empty', true); return; }
+
+  const r = await fetch(`/api/items/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  });
+  if (!r.ok) { toast('Error saving', true); return; }
+  toast('Item updated ✓');
+  closeModal('modal-edit-item');
+  // Update in-place
+  const el = document.querySelector(`#item-${id} .item-text`);
+  if (el) el.textContent = content;
+}
+
+/* ── confirm / delete ──────────────────────────────────────────────── */
+let _deleteTarget = null;
+
+function confirmDelete(type, id, msg) {
+  _deleteTarget = {type, id};
+  document.getElementById('confirm-msg').innerHTML = msg;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  _deleteTarget = null;
+}
+
+async function doDelete() {
+  if (!_deleteTarget) return;
+  const {type, id} = _deleteTarget;
+  closeConfirm();
+
+  const url = type === 'section' ? `/api/sections/${id}`
+            : type === 'phase'   ? `/api/phases/${id}`
+            :                      `/api/items/${id}`;
+
+  const r = await fetch(url, {method:'DELETE'});
+  if (!r.ok) { toast('Error deleting', true); return; }
+  toast('Deleted ✓');
+
+  if (type === 'item') {
+    const el = document.getElementById(`item-${id}`);
+    if (el) el.remove();
+  } else {
+    const card = document.getElementById(type==='section' ? `sec-${id}` : `ph-${id}`);
+    if (card) card.remove();
+  }
+}
+
+/* ── helpers ────────────────────────────────────────────────────────── */
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+/* ── close modals on backdrop click ─────────────────────────────────── */
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) closeModal(el.id);
+  });
+});
+</script>
 </body>
 </html>

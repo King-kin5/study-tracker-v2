@@ -257,7 +257,8 @@ def get_all_sections():
             import_static_data()
             sections = get_all_sections_db()
         return sections
-    except Exception:
+    except Exception as e:
+        print(f"[get_all_sections] DB error, falling back to static: {e}")
         # Fall back to static data if database issues
         return [json.loads(json.dumps(s)) for s in ALL_SECTIONS]
 
@@ -326,9 +327,6 @@ def save_progress(data):
         conn.commit()
 
 # ── helpers ────────────────────────────────────────────────────────────────────
-def get_all_sections():
-    return [json.loads(json.dumps(s)) for s in ALL_SECTIONS]
-
 def slugify(text):
     return re.sub(r"[^a-z0-9_]", "_", text.lower().strip())[:40]
 
@@ -474,6 +472,7 @@ async def manage(request: Request):
     return templates.TemplateResponse("manage.html", {
         "request": request,
         "sections": sections,
+        "all_sections": sections,
         "stats": stats,
         "streak": streak,
         "study_days": study_days,
@@ -506,8 +505,10 @@ async def toggle(request: Request, key: str = Form(...)):
             if phase["id"] == phase_id and sec_key in phase["sections"]:
                 items = phase["sections"][sec_key]
                 if item_idx < len(items):
-                    color     = phase["color"]
-                    item_text = items[item_idx]
+                    color = phase["color"]
+                    raw   = items[item_idx]
+                    # DB returns dicts {"id": .., "content": ..}; static data returns plain strings
+                    item_text = raw["content"] if isinstance(raw, dict) else raw
                 break
 
     stats      = build_stats(progress, sections)
@@ -528,7 +529,6 @@ async def create_section(request: Request):
     
     with get_db() as conn:
         with conn.cursor() as cur:
-            # Get max sort order
             cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM sections")
             sort_order = cur.fetchone()[0]
             
@@ -537,8 +537,9 @@ async def create_section(request: Request):
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
             """, (section_id, data["label"], data["icon"], data["color"], sort_order))
+            new_id = cur.fetchone()[0]
             conn.commit()
-            return {"id": cur.fetchone()[0]}
+            return {"id": new_id}
 
 @app.put("/api/sections/{section_id}", response_class=JSONResponse)
 async def update_section(section_id: str, request: Request):
@@ -569,7 +570,6 @@ async def create_phase(section_id: str, request: Request):
     
     with get_db() as conn:
         with conn.cursor() as cur:
-            # Get max sort order
             cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM phases WHERE section_id = %s", (section_id,))
             sort_order = cur.fetchone()[0]
             
@@ -579,8 +579,18 @@ async def create_phase(section_id: str, request: Request):
                 RETURNING id
             """, (phase_id, section_id, data["phase"], data["title"], data["icon"], 
                  data["color"], data.get("status", "upcoming"), sort_order))
+            new_id = cur.fetchone()[0]
+
+            # Auto-create all default phase_section rows so items can be added immediately
+            for sk in ["topics", "papers_read", "papers_implement", "experiments", "projects"]:
+                cur.execute("""
+                    INSERT INTO phase_sections (phase_id, section_key)
+                    VALUES (%s, %s)
+                    ON CONFLICT (phase_id, section_key) DO NOTHING
+                """, (new_id, sk))
+
             conn.commit()
-            return {"id": cur.fetchone()[0]}
+            return {"id": new_id}
 
 @app.put("/api/phases/{phase_id}", response_class=JSONResponse)
 async def update_phase(phase_id: str, request: Request):
@@ -622,9 +632,11 @@ async def create_item(phase_id: str, section_key: str, request: Request):
                 SELECT id FROM phase_sections 
                 WHERE phase_id = %s AND section_key = %s
             """, (phase_id, section_key))
-            ps_id = cur.fetchone()[0]
+            row = cur.fetchone()
+            if not row:
+                return JSONResponse({"error": "phase_section not found"}, status_code=404)
+            ps_id = row["id"]
             
-            # Get max sort order
             cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM items WHERE phase_section_id = %s", (ps_id,))
             sort_order = cur.fetchone()[0]
             
@@ -633,8 +645,9 @@ async def create_item(phase_id: str, section_key: str, request: Request):
                 VALUES (%s, %s, %s)
                 RETURNING id
             """, (ps_id, data["content"], sort_order))
+            new_id = cur.fetchone()[0]
             conn.commit()
-            return {"id": cur.fetchone()[0]}
+            return {"id": new_id}
 
 @app.put("/api/items/{item_id}", response_class=JSONResponse)
 async def update_item(item_id: int, request: Request):

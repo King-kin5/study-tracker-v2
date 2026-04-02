@@ -86,6 +86,7 @@
          id="spanel-{{ phase.id }}-{{ sec_key }}">
       <div class="items-list" id="list-{{ phase.id }}-{{ sec_key }}">
         {% for item in items %}
+        {% set item_content = item.content if item is mapping else item %}
         {% set ikey = phase.id ~ '.' ~ sec_key ~ '.' ~ loop.index0 %}
         {% set done = checked.get(ikey) %}
         <div class="item-row {% if done %}checked{% endif %}"
@@ -95,7 +96,7 @@
              hx-target="#item-{{ ikey | replace('.', '-') }}"
              hx-swap="outerHTML">
           <div class="checkbox" style="--pc:{{ phase.color }}">{% if done %}✓{% endif %}</div>
-          <span class="item-text">{{ item }}</span>
+          <span class="item-text">{{ item_content }}</span>
         </div>
         {% endfor %}
       </div>
