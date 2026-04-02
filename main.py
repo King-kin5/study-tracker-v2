@@ -50,13 +50,24 @@ def init_db():
             """)
             # Add new columns if they don't exist (migration)
             try:
-                cur.execute("ALTER TABLE progress ADD COLUMN total_items INTEGER NOT NULL DEFAULT 0")
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'progress' AND column_name = 'total_items'
+                """)
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE progress ADD COLUMN total_items INTEGER NOT NULL DEFAULT 0")
             except psycopg2.Error:
-                pass  # Column already exists
+                pass
+            
             try:
-                cur.execute("ALTER TABLE progress ADD COLUMN overall_pct FLOAT NOT NULL DEFAULT 0.0")
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'progress' AND column_name = 'overall_pct'
+                """)
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE progress ADD COLUMN overall_pct FLOAT NOT NULL DEFAULT 0.0")
             except psycopg2.Error:
-                pass  # Column already exists
+                pass
             
             # Roadmap tables
             cur.execute("""
@@ -456,9 +467,16 @@ async def dashboard(request: Request):
 @app.get("/manage", response_class=HTMLResponse)
 async def manage(request: Request):
     sections = get_all_sections()
+    progress = load_progress()
+    stats = build_stats(progress, sections)
+    streak = compute_streak(progress["streak"].get("dates", []))
+    study_days = len(progress["streak"].get("dates", []))
     return templates.TemplateResponse("manage.html", {
         "request": request,
         "sections": sections,
+        "stats": stats,
+        "streak": streak,
+        "study_days": study_days,
     })
 
 # ── toggle ─────────────────────────────────────────────────────────────────────

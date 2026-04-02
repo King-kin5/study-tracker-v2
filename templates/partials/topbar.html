@@ -6,6 +6,8 @@
         Master Roadmap
       {% elif 'dashboard' in request.url.path %}
         Dashboard
+      {% elif 'manage' in request.url.path %}
+        Manage Roadmap
       {% else %}
         {{ section.label if section is defined else 'Study Tracker' }}
       {% endif %}
@@ -13,6 +15,7 @@
   </div>
 
   <div id="stats-bar">
+    {% if stats is defined %}
     <div class="sb-pills">
       <div class="sb-pill"><span style="color:#fbbf24;font-weight:700">🔥{{ streak }}</span><span class="sb-label">streak</span></div>
       <div class="sb-pill"><span style="color:#60a5fa;font-weight:700">{{ study_days }}</span><span class="sb-label">days</span></div>
@@ -28,5 +31,6 @@
       </div>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
 </div>

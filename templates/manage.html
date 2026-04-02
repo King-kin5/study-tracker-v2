@@ -75,10 +75,10 @@
               <h4>{{ section_key|replace('_', ' ')|title }}</h4>
               <div class="item-list" id="items-{{ phase.id }}-{{ section_key }}">
                 {% for item in items %}
-                <div class="item" id="item-{{ loop.index }}">
-                  {{ item.content }}
-                  <button class="btn edit-btn" onclick="editItem({{ item.id }}, '{{ item.content|replace("'", "\\'") }}', '{{ phase.id }}', '{{ section_key }}')">Edit</button>
-                  <button class="btn delete-btn" hx-delete="/api/items/{{ item.id }}" hx-target="closest .item" hx-swap="outerHTML">Delete</button>
+                <div class="item" id="item-{{ item.id if item is mapping else loop.index }}">
+                  {{ item.content if item is mapping else item }}
+                  <button class="btn edit-btn" onclick="editItem({{ item.id if item is mapping else loop.index }}, '{{ (item.content if item is mapping else item)|replace("'", "\\'") }}', '{{ phase.id }}', '{{ section_key }}')">Edit</button>
+                  <button class="btn delete-btn" hx-delete="/api/items/{{ item.id if item is mapping else loop.index }}" hx-target="closest .item" hx-swap="outerHTML">Delete</button>
                 </div>
                 {% endfor %}
               </div>
